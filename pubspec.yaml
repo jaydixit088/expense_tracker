@@ -18,6 +18,7 @@ dependencies:
   firebase_core: any
   firebase_auth: any
   cloud_firestore: any
+  google_fonts: any
   google_sign_in: any
   sqflite: any
   path: any
@@ -28,6 +29,7 @@ dependencies:
   share_plus: any
   pdf: any
   printing: any
+
 
 dev_dependencies:
   flutter_test:
