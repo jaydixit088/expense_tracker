@@ -70,7 +70,7 @@ class MyApp extends StatelessWidget {
         // --- STARTING POINT ---
         // The AuthGate will handle whether to show the WelcomeScreen or ExpensesScreen.
         // This is the correct entry point for an app with authentication.
-        home: const AuthGate(),
+        home: const SplashScreen(),
       ),
     );
   }
