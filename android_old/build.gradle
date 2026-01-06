@@ -1,0 +1,63 @@
+buildscript {
+    ext.kotlin_version = '1.9.23'
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.2.1'
+        classpath 'com.google.gms:google-services:4.4.2'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+def newBuildDir = rootProject.layout.buildDirectory.dir("../../build").get()
+rootProject.layout.buildDirectory.set(newBuildDir)
+
+
+
+// Define global properties for plugins to inherit
+ext {
+    compileSdkVersion = 36
+    targetSdkVersion = 36
+    minSdkVersion = 21
+}
+
+subprojects {
+    def newSubprojectBuildDir = newBuildDir.dir(project.name)
+    project.layout.buildDirectory.set(newSubprojectBuildDir)
+    
+    // Attempting to exclude the task from execution
+    gradle.startParameter.excludedTaskNames += ["verifyReleaseResources", ":printing:verifyReleaseResources"]
+    
+    project.afterEvaluate {
+        if (project.plugins.hasPlugin("com.android.application") || project.plugins.hasPlugin("com.android.library")) {
+            project.android {
+                compileSdkVersion 36
+                defaultConfig {
+                    targetSdkVersion 36
+                }
+            }
+        }
+    }
+
+
+}
+
+gradle.taskGraph.whenReady { graph ->
+    graph.allTasks.findAll { it.name == 'verifyReleaseResources' }.each { task ->
+        task.enabled = false
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}
