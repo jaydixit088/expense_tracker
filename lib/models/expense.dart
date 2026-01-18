@@ -36,6 +36,7 @@ class Expense {
     required this.date,
     required this.category,
     this.additionalInfo,
+    this.organisationId,
   }) : id = id ?? uuid.v4(); // Smart constructor: assigns a new ID if one isn't provided.
 
   final String id;
@@ -45,6 +46,7 @@ class Expense {
   final DateTime date;
   final String category; // Using String is flexible, allowing for custom categories.
   final String? additionalInfo;
+  final String? organisationId;
 
   /// A getter for a user-friendly date string.
   String get formattedDate {
@@ -61,6 +63,7 @@ class Expense {
       'date': date.toIso8601String(), // ISO 8601 is the standard for storing dates as strings.
       'category': category,
       'additionalInfo': additionalInfo,
+      'organisationId': organisationId,
     };
   }
 
@@ -88,6 +91,7 @@ class Expense {
       date: parsedDate,
       category: map['category'] ?? 'custom',
       additionalInfo: map['additionalInfo'],
+      organisationId: map['organisationId'],
     );
   }
 }

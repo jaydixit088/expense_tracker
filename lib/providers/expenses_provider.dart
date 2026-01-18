@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:expense_tracker/models/expense.dart';
 import 'package:expense_tracker/models/monthly_budget.dart';
+import 'package:expense_tracker/models/organisation.dart';
 
 /// Manages the application's state for expenses, filters, and user preferences.
 /// This provider centralizes all business logic related to expenses.
@@ -19,6 +20,7 @@ class ExpensesProvider with ChangeNotifier {
   double _monthlyBudget = 0; // Current loaded budget
   bool _isLoadingBudget = false;
   ThemeMode _themeMode = ThemeMode.system;
+  Organisation? _selectedOrganisation; // Null means Personal
 
   // --- KEYS ---
   static const String _currencyKey = 'user_currency_preference';
@@ -32,10 +34,19 @@ class ExpensesProvider with ChangeNotifier {
   String get searchQuery => _searchQuery;
   double get monthlyBudget => _monthlyBudget;
   ThemeMode get themeMode => _themeMode;
+  Organisation? get selectedOrganisation => _selectedOrganisation;
+
+  bool get canEdit {
+    if (_selectedOrganisation == null) return true;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+    if (_selectedOrganisation!.adminId == user.uid) return true;
+    final permission = _selectedOrganisation!.permissions[user.uid];
+    return permission == 'readwrite';
+  }
 
   ExpensesProvider() {
     _loadPreferences();
-    // In the future, you might load custom categories from Firestore here too.
   }
 
   // --- PREFERENCES ---
@@ -70,7 +81,21 @@ class ExpensesProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // --- FILTERS ---
+  // --- ORGANISATION ---
+  
+  void selectOrganisation(Organisation? org) {
+    _selectedOrganisation = org;
+    _cachedStream = null; // Force refresh stream
+    _filterDate = null; // Reset filters when switching context
+    _categoryFilter = null;
+    notifyListeners();
+    // Re-fetch budget for the new context
+    if (org != null) {
+       _monthlyBudget = org.monthlyExpenses; // Use org budget
+    } else {
+       _fetchBudgetForMonth(null); // Fetch personal budget
+    }
+  }
 
   // --- FILTERS & BUDGET ---
 
@@ -79,7 +104,11 @@ class ExpensesProvider with ChangeNotifier {
   Future<void> setFilterDate(DateTime? date) async {
     _filterDate = date;
     notifyListeners();
-    await _fetchBudgetForMonth(date);
+    if (_selectedOrganisation == null) {
+      await _fetchBudgetForMonth(date);
+    } 
+    // For organisation, budget is currently static/global per org, 
+    // but we could implement monthly budgets for orgs too later.
   }
 
   void setCategoryFilter(String? category) {
@@ -94,11 +123,45 @@ class ExpensesProvider with ChangeNotifier {
 
   /// Updates the budget for the CURRENTLY selected month (or current month if null).
   Future<void> setMonthlyBudget(double amount) async {
-    _monthlyBudget = amount;
-    notifyListeners();
-
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
+    if (_selectedOrganisation != null) {
+        // Update Organisation Budget
+        // Check Admin permissions
+        if (_selectedOrganisation!.adminId != user.uid) {
+            // Only admin can change budget? Or ReadWrite? Let's say Admin only for budget.
+             // Actually requirement: "User can add organisation like their company name,admin name and monthly expenses"
+             // Implies admin sets it.
+             return; 
+        }
+
+        // We need to update the organisation doc locally and remotely
+        // Note: This updates the 'static' monthly budget field in Org model.
+        // It doesn't use the MonthlyBudget collection which is time-based.
+        // This is a disconnect, but fits the simple "monthly expenses" field description.
+        // To be consistent with personal, we *could* use collections, but let's stick to the model field for now.
+        
+        final updatedOrg = Organisation(
+           id: _selectedOrganisation!.id,
+           name: _selectedOrganisation!.name,
+           adminId: _selectedOrganisation!.adminId,
+           adminName: _selectedOrganisation!.adminName,
+           monthlyExpenses: amount,
+           members: _selectedOrganisation!.members,
+           permissions: _selectedOrganisation!.permissions,
+        );
+        
+        await FirebaseFirestore.instance.collection('organisations').doc(updatedOrg.id).update({'monthlyExpenses': amount});
+        _selectedOrganisation = updatedOrg;
+        _monthlyBudget = amount;
+        notifyListeners();
+        return;
+    }
+
+    // Personal Budget Logic
+    _monthlyBudget = amount;
+    notifyListeners();
 
     final targetDate = _filterDate ?? DateTime.now();
     final budgetId = MonthlyBudget.generateId(targetDate.year, targetDate.month);
@@ -124,6 +187,12 @@ class ExpensesProvider with ChangeNotifier {
   }
 
   Future<void> _fetchBudgetForMonth(DateTime? date) async {
+    if (_selectedOrganisation != null) {
+        _monthlyBudget = _selectedOrganisation!.monthlyExpenses;
+        notifyListeners();
+        return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -161,6 +230,7 @@ class ExpensesProvider with ChangeNotifier {
 
   Stream<List<Expense>>? _cachedStream;
   DateTime? _lastFilterDate;
+  Organisation? _lastSelectedOrganisation;
   
   /// The single source of truth for fetching expenses.
   Stream<List<Expense>> get expensesStream {
@@ -169,20 +239,29 @@ class ExpensesProvider with ChangeNotifier {
       return Stream.value([]);
     }
 
-    // Return cached stream if date filter hasn't changed.
-    // Client-side filters (category, search) don't need a new Firestore stream.
-    if (_cachedStream != null && _filterDate == _lastFilterDate) {
+    // Return cached stream if inputs haven't changed.
+    if (_cachedStream != null && _filterDate == _lastFilterDate && _selectedOrganisation?.id == _lastSelectedOrganisation?.id) {
       return _applyClientFilters(_cachedStream!);
     }
 
     _lastFilterDate = _filterDate;
+    _lastSelectedOrganisation = _selectedOrganisation;
 
     // Start with the base query.
-    Query query = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('expenses')
-        .orderBy('date', descending: true);
+    Query query;
+    if (_selectedOrganisation != null) {
+        query = FirebaseFirestore.instance
+            .collection('organisations')
+            .doc(_selectedOrganisation!.id)
+            .collection('expenses')
+            .orderBy('date', descending: true);
+    } else {
+        query = FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('expenses')
+            .orderBy('date', descending: true);
+    }
 
     // Apply Month filter
     if (_filterDate != null) {
@@ -235,10 +314,13 @@ class ExpensesProvider with ChangeNotifier {
   }
 
   Future<void> addExpense(Expense expense) async {
+    if (!canEdit) throw Exception('Permission denied: Read-only access');
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not logged in');
 
+      // Add organisationId to expense if in organisation mode
       final expenseWithUser = Expense(
         id: expense.id,
         userId: user.uid,
@@ -247,14 +329,25 @@ class ExpensesProvider with ChangeNotifier {
         date: expense.date,
         category: expense.category,
         additionalInfo: expense.additionalInfo,
+        organisationId: _selectedOrganisation?.id,
       );
 
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('expenses')
-          .doc(expenseWithUser.id)
-          .set(expenseWithUser.toMap());
+      if (_selectedOrganisation != null) {
+          await FirebaseFirestore.instance
+            .collection('organisations')
+            .doc(_selectedOrganisation!.id)
+            .collection('expenses')
+            .doc(expenseWithUser.id)
+            .set(expenseWithUser.toMap());
+      } else {
+          await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('expenses')
+            .doc(expenseWithUser.id)
+            .set(expenseWithUser.toMap());
+      }
+
     } catch (e) {
       debugPrint('Error adding expense: $e');
       rethrow;
@@ -262,15 +355,39 @@ class ExpensesProvider with ChangeNotifier {
   }
 
   Future<void> updateExpense(String id, Expense newExpense) async {
+    if (!canEdit) throw Exception('Permission denied: Read-only access');
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not logged in');
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('expenses')
-          .doc(id)
-          .update(newExpense.toMap());
+      
+      // Ensure organisationId is preserved or set correctly
+      final expenseToUpdate = Expense(
+         id: newExpense.id,
+         userId: newExpense.userId,
+         title: newExpense.title,
+         amount: newExpense.amount,
+         date: newExpense.date,
+         category: newExpense.category,
+         additionalInfo: newExpense.additionalInfo,
+         organisationId: _selectedOrganisation?.id, 
+      );
+
+      if (_selectedOrganisation != null) {
+          await FirebaseFirestore.instance
+            .collection('organisations')
+            .doc(_selectedOrganisation!.id)
+            .collection('expenses')
+            .doc(id)
+            .update(expenseToUpdate.toMap());
+      } else {
+          await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('expenses')
+            .doc(id)
+            .update(expenseToUpdate.toMap());
+      }
     } catch (e) {
       debugPrint('Error updating expense: $e');
       rethrow;
@@ -278,15 +395,27 @@ class ExpensesProvider with ChangeNotifier {
   }
 
   Future<void> removeExpense(String expenseId) async {
+    if (!canEdit) throw Exception('Permission denied: Read-only access');
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not logged in');
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('expenses')
-          .doc(expenseId)
-          .delete();
+      
+      if (_selectedOrganisation != null) {
+          await FirebaseFirestore.instance
+            .collection('organisations')
+            .doc(_selectedOrganisation!.id)
+            .collection('expenses')
+            .doc(expenseId)
+            .delete();
+      } else {
+          await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('expenses')
+            .doc(expenseId)
+            .delete();
+      }
     } catch (e) {
       debugPrint('Error removing expense: $e');
       rethrow;

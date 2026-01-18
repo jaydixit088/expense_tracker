@@ -14,6 +14,7 @@ import 'package:expense_tracker/widgets/new_expense.dart';
 import 'package:expense_tracker/widgets/expenses_list/expenses_list.dart';
 import 'package:expense_tracker/widgets/chart/pie_chart.dart';
 import 'package:expense_tracker/widgets/summary/category_summary_row.dart';
+import 'package:expense_tracker/widgets/app_drawer.dart';
 
 /// The main screen that displays the user's expenses, charts, and summaries.
 class ExpensesScreen extends StatefulWidget {
@@ -101,12 +102,8 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     final expensesProvider = Provider.of<ExpensesProvider>(context);
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.person_outline),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
-          tooltip: 'Profile',
-        ),
         title: _isSearching 
           ? TextField(
               controller: _searchController,
@@ -121,7 +118,14 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               ),
               onChanged: (value) => Provider.of<ExpensesProvider>(context, listen: false).setSearchQuery(value),
             )
-          : const Text('KharchaGuru'),
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                 Text(expensesProvider.selectedOrganisation?.name ?? 'KharchaGuru'),
+                 if (expensesProvider.selectedOrganisation != null)
+                   const Text('Organisation', style: TextStyle(fontSize: 10, fontWeight: FontWeight.normal)),
+              ],
+            ),
         actions: [
           // Search Toggle
           IconButton(
@@ -155,10 +159,10 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: expensesProvider.canEdit ? FloatingActionButton(
         onPressed: _openAddExpenseOverlay,
         child: const Icon(Icons.add),
-      ),
+      ) : null,
       // The main body uses a StreamBuilder to reactively display data from Firestore.
       // The `expensesStream` getter in the provider automatically rebuilds the query
       // whenever a filter is changed, so the UI just needs to listen.

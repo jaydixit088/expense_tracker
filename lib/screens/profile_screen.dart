@@ -238,17 +238,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile & Settings'), actions: [
-        if (_isSaving)
-          const Padding(
-              padding: EdgeInsets.all(16),
-              child: CircularProgressIndicator(color: Colors.white))
-        else
-          IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: _saveProfile,
-              tooltip: 'Save Profile')
-      ]),
+      appBar: AppBar(title: const Text('Profile & Settings')),
       // Use a FutureBuilder to fetch the user's profile once.
       body: FutureBuilder<UserProfile?>(
         future: _profileFuture,
@@ -294,12 +284,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: const TextStyle(color: Colors.grey, fontSize: 16)));
   }
 
+  bool _isEditing = false; // Add state
+
   Widget _buildPersonalInfoCard(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Personal Information',
-            style: Theme.of(context).textTheme.titleLarge),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Personal Information',
+                style: Theme.of(context).textTheme.titleLarge),
+            IconButton(
+              icon: Icon(_isEditing ? Icons.check : Icons.edit),
+              onPressed: () {
+                if (_isEditing) {
+                   _saveProfile();
+                   setState(() => _isEditing = false);
+                } else {
+                   setState(() => _isEditing = true);
+                }
+              },
+              tooltip: _isEditing ? 'Save' : 'Edit',
+            ),
+          ],
+        ),
         Card(
           clipBehavior: Clip.antiAlias,
           child: Padding(
@@ -308,6 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 TextField(
                     controller: _nameController,
+                    enabled: _isEditing,
                     decoration: const InputDecoration(
                         labelText: 'Display Name', icon: Icon(Icons.person))),
                 ListTile(
@@ -315,30 +325,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   leading: const Icon(Icons.cake),
                   title: const Text('Date of Birth'),
                   trailing: Text(_dob == null
-                      ? 'Not Set'
+                      ? (_isEditing ? 'Tap to select' : 'Not Set')
                       : DateFormat.yMd().format(_dob!)),
-                  onTap: () async {
+                  onTap: _isEditing ? () async {
                     final pickedDate = await showDatePicker(
                         context: context,
                         initialDate: _dob ?? DateTime(2000),
                         firstDate: DateTime(1920),
                         lastDate: DateTime.now());
                     if (pickedDate != null) setState(() => _dob = pickedDate);
-                  },
+                  } : null,
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.wc),
                   title: const Text('Gender'),
-                  trailing: DropdownButton<String>(
-                    value: _gender,
-                    hint: const Text('Select'),
-                    items: ['Male', 'Female', 'Other']
-                        .map((label) =>
-                            DropdownMenuItem(value: label, child: Text(label)))
-                        .toList(),
-                    onChanged: (value) => setState(() => _gender = value),
-                  ),
+                  trailing: _isEditing 
+                     ? DropdownButton<String>(
+                        value: _gender,
+                        hint: const Text('Select'),
+                        items: ['Male', 'Female', 'Other']
+                            .map((label) =>
+                                DropdownMenuItem(value: label, child: Text(label)))
+                            .toList(),
+                        onChanged: (value) => setState(() => _gender = value),
+                      )
+                     : Text(_gender ?? 'Not Set'),
                 ),
               ],
             ),

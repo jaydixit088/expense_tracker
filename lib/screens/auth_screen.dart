@@ -51,11 +51,25 @@ class _AuthScreenState extends State<AuthScreen> {
 
       if (user == null) throw Exception('Authentication failed: User is null');
 
-      // After sign-up, create a user profile document in Firestore.
-      if (!_isLogin) {
+      // Check if it's a new user (works for both Email/Password and Google)
+      final isNewUser = userCredential.additionalUserInfo?.isNewUser ?? false;
+
+      // If it is a new user, OR if we are in the explicit "Register" flow (fallback), create the profile.
+      if (isNewUser || !_isLogin) {
+        String name = _displayName;
+        // If using Google Sync, _displayName might be empty, so use the one from the account
+        if (name.isEmpty && user.displayName != null) {
+          name = user.displayName!;
+        }
+        
+        // Final fallback
+        if (name.isEmpty) {
+            name = 'User'; 
+        }
+
         await FirestoreService().createUserProfile(
           uid: user.uid,
-          displayName: _displayName,
+          displayName: name,
           email: user.email,
         );
       }

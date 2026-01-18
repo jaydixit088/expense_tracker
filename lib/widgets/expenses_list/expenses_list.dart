@@ -28,6 +28,36 @@ class ExpensesList extends StatelessWidget {
       itemCount: expenses.length,
       itemBuilder: (ctx, index) {
         final expense = expenses[index];
+        final provider = Provider.of<ExpensesProvider>(context, listen: false); // We need listen:false inside builder usually, but we need 'canEdit' state.
+        // Actually, optimal is to use context.select or Consumer.
+        // But since we are inside ListView.builder, and ExpensesList is stateless,
+        // we should probably trust the parent or just access Provider.of<ExpensesProvider>(context) which IS reachable.
+        // HOWEVER, reusing 'provider' variable from line 55 is inside onDismissed.
+        
+        // Let's get canEdit here
+        final canEdit = Provider.of<ExpensesProvider>(context).canEdit;
+
+        Widget itemContent = GestureDetector(
+          onTap: () {
+            showDialog(
+              context: context,
+              builder: (ctx) => ExpenseDetailDialog(
+                expense: expense,
+                onEdit: () => _openEditExpenseOverlay(context, expense),
+                canEdit: canEdit,
+              ),
+            );
+          },
+          child: ExpenseItem(expense),
+        );
+
+        if (!canEdit) {
+           return Padding(
+             padding: const EdgeInsets.symmetric(vertical: 0), // Match spacing if needed
+             child: itemContent, 
+           ); // No dismissible
+        }
+
         // Dismissible allows for swipe-to-delete functionality.
         return TweenAnimationBuilder(
           duration: Duration(milliseconds: 300 + (index * 50)),
@@ -52,7 +82,6 @@ class ExpensesList extends StatelessWidget {
               child: const Icon(Icons.delete, color: Colors.white, size: 30),
             ),
             onDismissed: (direction) async {
-              final provider = Provider.of<ExpensesProvider>(context, listen: false);
               try {
                  await provider.removeExpense(expense.id);
                  if (!context.mounted) return;
@@ -76,18 +105,7 @@ class ExpensesList extends StatelessWidget {
                  );
               }
             },
-            child: GestureDetector(
-              onTap: () {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => ExpenseDetailDialog(
-                    expense: expense,
-                    onEdit: () => _openEditExpenseOverlay(context, expense),
-                  ),
-                );
-              },
-              child: ExpenseItem(expense),
-            ),
+            child: itemContent,
           ),
         );
       },

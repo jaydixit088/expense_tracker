@@ -5,9 +5,10 @@ import 'package:expense_tracker/models/expense.dart';
 
 /// A dialog that displays full details of an expense with an edit option.
 class ExpenseDetailDialog extends StatelessWidget {
-  const ExpenseDetailDialog({super.key, required this.expense, required this.onEdit});
+  const ExpenseDetailDialog({super.key, required this.expense, required this.onEdit, this.canEdit = true});
 
   final Expense expense;
+  final bool canEdit;
   final VoidCallback onEdit;
 
   @override
@@ -42,17 +43,18 @@ class ExpenseDetailDialog extends StatelessWidget {
                const SizedBox(height: 12),
             ],
             const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.edit),
-                label: const Text('Edit Expense'),
-                onPressed: () {
-                  Navigator.pop(context); // Close detail dialog
-                  onEdit(); // Trigger edit
-                },
+            if (canEdit)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.edit),
+                  label: const Text('Edit Expense'),
+                  onPressed: () {
+                    Navigator.pop(context); // Close detail dialog
+                    onEdit(); // Trigger edit
+                  },
+                ),
               ),
-            ),
           ],
         ),
       ),
