@@ -44,20 +44,32 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   }
 
   /// Shows a date picker and sets the filter in the provider.
-  /// Shows a date picker and sets the filter in the provider.
   void _presentDatePicker() async {
     final now = DateTime.now();
     final expensesProvider = Provider.of<ExpensesProvider>(context, listen: false);
+    final initialDate = expensesProvider.filterDate ?? now;
+    
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: expensesProvider.filterDate ?? now,
+      initialDate: initialDate,
       firstDate: DateTime(now.year - 5),
       lastDate: now,
-      helpText: 'SELECT MONTH', // Guide the user
+      helpText: 'SELECT MONTH',
       fieldHintText: 'Month/Year',
+      initialDatePickerMode: DatePickerMode.year, // Start with year for easier navigation
     );
-    // The provider now handles monthly filtering using any date within that month.
-    expensesProvider.setFilterDate(pickedDate);
+    
+    if (pickedDate != null) {
+      expensesProvider.setFilterDate(pickedDate);
+    }
+  }
+
+  void _setFilterToCurrentMonth() {
+    Provider.of<ExpensesProvider>(context, listen: false).setFilterDate(DateTime.now());
+  }
+
+  void _setFilterToAllTime() {
+    Provider.of<ExpensesProvider>(context, listen: false).setFilterDate(null);
   }
 
   void _showEditBudgetDialog() {
@@ -101,6 +113,17 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     // We listen to the provider to rebuild the UI when filters change.
     final expensesProvider = Provider.of<ExpensesProvider>(context);
 
+    // Helper to determine the current filter label
+    String filterLabel = 'All Time';
+    if (expensesProvider.filterDate != null) {
+      if (expensesProvider.filterDate!.month == DateTime.now().month && 
+          expensesProvider.filterDate!.year == DateTime.now().year) {
+        filterLabel = 'Current Month';
+      } else {
+        filterLabel = DateFormat('MMM y').format(expensesProvider.filterDate!);
+      }
+    }
+
     return Scaffold(
       drawer: const AppDrawer(),
       appBar: AppBar(
@@ -122,8 +145,13 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                  Text(expensesProvider.selectedOrganisation?.name ?? 'KharchaGuru'),
-                 if (expensesProvider.selectedOrganisation != null)
-                   const Text('Organisation', style: TextStyle(fontSize: 10, fontWeight: FontWeight.normal)),
+                 Row(
+                   children: [
+                     if (expensesProvider.selectedOrganisation != null)
+                       const Text('Organisation • ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.normal)),
+                     Text(filterLabel, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                   ],
+                 ),
               ],
             ),
         actions: [
@@ -141,22 +169,61 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             },
             tooltip: 'Search',
           ),
-          // Clear Filter Button
-          if (expensesProvider.filterDate != null || expensesProvider.categoryFilter != null)
-            IconButton(
-              icon: const Icon(Icons.filter_list_off),
-              onPressed: () {
-                expensesProvider.setFilterDate(null);
-                expensesProvider.setCategoryFilter(null);
-              },
-              tooltip: 'Clear Filter',
-            ),
-          // Date Filter Button
-          IconButton(
+          
+          // Filter Menu
+          PopupMenuButton<String>(
             icon: const Icon(Icons.calendar_month),
-            onPressed: _presentDatePicker,
-            tooltip: 'Select Month',
+            tooltip: 'Filter Date',
+            onSelected: (value) {
+              if (value == 'current') {
+                _setFilterToCurrentMonth();
+              } else if (value == 'select') {
+                _presentDatePicker();
+              } else if (value == 'all') {
+                _setFilterToAllTime();
+              }
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'current',
+                child: Row(
+                  children: [
+                    Icon(Icons.today, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text('Current Month'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'select',
+                child: Row(
+                  children: [
+                    Icon(Icons.date_range, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Text('Select Month...'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'all',
+                child: Row(
+                  children: [
+                    Icon(Icons.list_alt, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text('All Time'),
+                  ],
+                ),
+              ),
+            ],
           ),
+
+          // Clear Category Filter (only if category is set)
+          if (expensesProvider.categoryFilter != null)
+             IconButton(
+              icon: const Icon(Icons.category_outlined),
+              onPressed: () => expensesProvider.setCategoryFilter(null),
+              tooltip: 'Clear Category Filter',
+            ),
         ],
       ),
       floatingActionButton: expensesProvider.canEdit ? FloatingActionButton(

@@ -14,7 +14,7 @@ class ExpensesProvider with ChangeNotifier {
   // --- STATE ---
   String _currencySymbol = '₹';
   final List<String> _customCategories = [];
-  DateTime? _filterDate; // Represents the selected MONTH
+  DateTime? _filterDate = DateTime.now(); // Represents the selected MONTH
   String? _categoryFilter;
   String _searchQuery = '';
   double _monthlyBudget = 0; // Current loaded budget
@@ -86,7 +86,7 @@ class ExpensesProvider with ChangeNotifier {
   void selectOrganisation(Organisation? org) {
     _selectedOrganisation = org;
     _cachedStream = null; // Force refresh stream
-    _filterDate = null; // Reset filters when switching context
+    _filterDate = DateTime.now(); // Reset filters when switching context
     _categoryFilter = null;
     notifyListeners();
     // Re-fetch budget for the new context
